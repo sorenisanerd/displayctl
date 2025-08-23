@@ -62,7 +62,7 @@ twine upload dist/*
 ## 🎯 Benefits of uvx Integration
 
 1. **Zero Setup**: No manual dependency installation needed
-2. **Isolation**: Doesn't pollute global Python environment  
+2. **Isolation**: Doesn't pollute global Python environment
 3. **Automatic Updates**: Easy to run latest version
 4. **Cross-Platform**: Works on any Linux system with uvx
 5. **Professional**: Standard Python packaging practices

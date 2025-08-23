@@ -6,7 +6,7 @@ This document explains how to use DisplayCtl with `uvx` for the best user experi
 
 `uvx` is a tool for running Python applications in isolated environments. It automatically:
 - Creates a virtual environment
-- Installs the package and its dependencies  
+- Installs the package and its dependencies
 - Handles system dependencies like `dbus-python`
 - Runs the application
 
@@ -29,7 +29,7 @@ pip install uv
 # Show current monitor configuration
 uvx displayctl current
 
-# Save current configuration  
+# Save current configuration
 uvx displayctl save work-setup
 
 # List saved configurations
@@ -77,7 +77,7 @@ If you have the source code locally:
 # Run from local source
 uvx --from /path/to/displayctl displayctl current
 
-# Install from local source  
+# Install from local source
 uvx install /path/to/displayctl
 ```
 

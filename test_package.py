@@ -15,22 +15,22 @@ def test_package_structure():
         print("✓ Package displayctl imported successfully")
         print(f"  Version: {displayctl.__version__}")
         print(f"  Description: {displayctl.__description__}")
-        
+
         # Test that cli module exists
         from displayctl import cli
         print("✓ CLI module found")
-        
-        # Test that __main__ module exists  
+
+        # Test that __main__ module exists
         import displayctl.__main__
         print("✓ __main__ module found")
-        
+
         print("\n✓ Package structure is correct for uvx usage")
         print("\nTo test with uvx:")
         print("  uvx --from /path/to/displayctl displayctl --help")
         print("  uvx displayctl current  # (after publishing)")
-        
+
         return True
-        
+
     except ImportError as e:
         if "dbus" in str(e).lower():
             print("ℹ  D-Bus dependency missing (expected on this system)")
