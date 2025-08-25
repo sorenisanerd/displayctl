@@ -1,0 +1,150 @@
+name: Version Bump and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      pre_release:
+        description: 'Create pre-release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install bump2version
+    
+    - name: Configure git
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+    
+    - name: Get current version
+      id: current_version
+      run: |
+        CURRENT=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+        echo "current=$CURRENT" >> $GITHUB_OUTPUT
+        echo "Current version: $CURRENT"
+    
+    - name: Bump version
+      id: bump
+      run: |
+        # Create .bumpversion.cfg if it doesn't exist
+        cat > .bumpversion.cfg << EOF
+        [bumpversion]
+        current_version = ${{ steps.current_version.outputs.current }}
+        commit = True
+        tag = True
+        tag_name = v{new_version}
+        message = Bump version to {new_version}
+        
+        [bumpversion:file:pyproject.toml]
+        search = version = "{current_version}"
+        replace = version = "{new_version}"
+        
+        [bumpversion:file:src/displayctl/__init__.py]
+        search = __version__ = "{current_version}"
+        replace = __version__ = "{new_version}"
+        EOF
+        
+        # Bump the version
+        bump2version ${{ github.event.inputs.version_type }} --verbose
+        
+        # Get the new version
+        NEW_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "New version: $NEW_VERSION"
+    
+    - name: Update CHANGELOG
+      run: |
+        NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+        DATE=$(date +%Y-%m-%d)
+        
+        # Create a new changelog entry
+        if [ -f CHANGELOG.md ]; then
+          # Create backup
+          cp CHANGELOG.md CHANGELOG.md.bak
+          
+          # Create temp file with new entry
+          cat > new_entry.md << EOF
+        
+        ## [$NEW_VERSION] - $DATE
+        
+        ### Added
+        
+        - Your changes here
+        
+        ### Changed
+        
+        - Your changes here
+        
+        ### Fixed
+        
+        - Your changes here
+        
+        EOF
+          
+          # Insert after the first line (header)
+          head -n 1 CHANGELOG.md.bak > CHANGELOG.md
+          cat new_entry.md >> CHANGELOG.md
+          tail -n +2 CHANGELOG.md.bak >> CHANGELOG.md
+          rm new_entry.md CHANGELOG.md.bak
+        fi
+    
+    - name: Commit changelog
+      run: |
+        git add CHANGELOG.md
+        git commit -m "Update CHANGELOG for v${{ steps.bump.outputs.new_version }}" || echo "No changelog changes to commit"
+    
+    - name: Push changes
+      run: |
+        git push origin main
+        git push origin v${{ steps.bump.outputs.new_version }}
+    
+    - name: Create pull request for manual changelog editing
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "Update CHANGELOG for v${{ steps.bump.outputs.new_version }}"
+        title: "📝 Update CHANGELOG for v${{ steps.bump.outputs.new_version }}"
+        body: |
+          ## Version Bump to v${{ steps.bump.outputs.new_version }}
+          
+          Please update the CHANGELOG.md with the actual changes for this release:
+          
+          - [ ] Update **Added** section with new features
+          - [ ] Update **Changed** section with modifications
+          - [ ] Update **Fixed** section with bug fixes
+          - [ ] Remove empty sections
+          
+          After updating the changelog, merge this PR and the release will be automatically created.
+        branch: changelog/v${{ steps.bump.outputs.new_version }}
+        delete-branch: true

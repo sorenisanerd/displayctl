@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v1.2.0
+
+permissions:
+  contents: write  # Required for creating releases
+  id-token: write  # Required for PyPI trusted publishing
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch full history for changelog generation
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine
+    
+    - name: Extract version from tag
+      id: get_version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+    
+    - name: Verify version consistency
+      run: |
+        # Check that pyproject.toml version matches tag
+        PROJECT_VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+        TAG_VERSION="${{ steps.get_version.outputs.version }}"
+        
+        if [ "$PROJECT_VERSION" != "$TAG_VERSION" ]; then
+          echo "Version mismatch: pyproject.toml has $PROJECT_VERSION, tag is $TAG_VERSION"
+          exit 1
+        fi
+        echo "Version consistency check passed: $PROJECT_VERSION"
+    
+    - name: Build package
+      run: |
+        python -m build
+        
+    - name: Verify package
+      run: |
+        python -m twine check dist/*
+        
+    - name: List built packages
+      run: |
+        ls -la dist/
+        
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        VERSION="${{ steps.get_version.outputs.version }}"
+        if [ -f CHANGELOG.md ]; then
+          # Extract the first section after the version header
+          sed -n "/## \[$VERSION\]/,/## \[/p" CHANGELOG.md | head -n -1 > release_notes.txt
+        else
+          echo "Release version $VERSION" > release_notes.txt
+        fi
+        
+        # Add some basic release info if file is empty or too short
+        if [ ! -s release_notes.txt ] || [ $(wc -l < release_notes.txt) -lt 3 ]; then
+          cat > release_notes.txt << EOF
+        # DisplayCtl v$VERSION
+        
+        See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
+        
+        ## Installation
+        
+        \`\`\`bash
+        pip install displayctl==$VERSION
+        \`\`\`
+        EOF
+        fi
+    
+    - name: Create GitHub Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: DisplayCtl v${{ steps.get_version.outputs.version }}
+        body_path: release_notes.txt
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
+        draft: false
+        prerelease: false
+    
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      # Using PyPI's trusted publishing - no API tokens needed!
+      # Make sure you've configured trusted publishing on PyPI for this repo
