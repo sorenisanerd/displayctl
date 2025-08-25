@@ -14,9 +14,17 @@ import argparse
 import re
 from pathlib import Path
 from typing import Dict, Any, List
+from enum import IntEnum
 
 # Defer dbus import until needed
 dbus = None
+
+
+class ApplyMethod(IntEnum):
+    """Methods for applying monitor configurations via D-Bus."""
+    VERIFY = 0      # Only verify configuration without applying
+    TEMPORARY = 1   # Apply configuration temporarily (default)
+    PERSISTENT = 2  # Apply configuration permanently
 
 
 def _ensure_dbus():
@@ -185,8 +193,15 @@ class MonitorConfigManager:
             print(f"Error saving configuration: {e}")
             sys.exit(1)
 
-    def load_config(self, name: str, dry_run: bool = False) -> None:
-        """Load and apply a saved monitor configuration."""
+    def load_config(self, name: str, dry_run: bool = False,
+                    method: ApplyMethod = ApplyMethod.TEMPORARY) -> None:
+        """Load and apply a saved monitor configuration.
+        
+        Args:
+            name: Name of the configuration to load
+            dry_run: If True, show what would be applied without applying
+            method: Configuration method (VERIFY, TEMPORARY, PERSISTENT)
+        """
         config_file = self.config_dir / f"{name}.json"
 
         if not config_file.exists():
@@ -200,7 +215,7 @@ class MonitorConfigManager:
             if dry_run:
                 self._show_config_preview(config, name)
             else:
-                self._apply_config(config)
+                self._apply_config(config, method)
                 print(f"Configuration '{name}' applied successfully")
 
         except Exception as e:
@@ -222,8 +237,14 @@ class MonitorConfigManager:
 
         print("\nUse 'load' without --dry-run to apply this configuration.")
 
-    def _apply_config(self, config: Dict[str, Any]) -> None:
-        """Apply a monitor configuration using D-Bus."""
+    def _apply_config(self, config: Dict[str, Any],
+                      method: ApplyMethod = ApplyMethod.TEMPORARY) -> None:
+        """Apply a monitor configuration using D-Bus.
+        
+        Args:
+            config: The monitor configuration to apply
+            method: Configuration method (VERIFY, TEMPORARY, PERSISTENT)
+        """
         self._ensure_dbus_connection()
 
         try:
@@ -329,14 +350,20 @@ class MonitorConfigManager:
                 logical_monitors_dbus, signature='(iiduba(ssa{sv})a{sv})')
 
             # Apply the configuration
-            method = dbus.UInt32(1)  # Verify method
+            method_value = dbus.UInt32(method)
             properties = dbus.Dictionary(
                 config.get('properties', {}), signature='sv')
 
             print("Applying monitor configuration...")
+            method_names = {
+                ApplyMethod.VERIFY: "verify",
+                ApplyMethod.TEMPORARY: "temporary",
+                ApplyMethod.PERSISTENT: "persistent"
+            }
+            print(f"Using method: {method_names.get(method, method)}")
             self.interface.ApplyMonitorsConfig(
                 current_state['serial'],
-                method,
+                method_value,
                 logical_monitors_array,
                 properties
             )
@@ -445,11 +472,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s save work        # Save current config as 'work'
-  %(prog)s load work        # Load and apply 'work' config
-  %(prog)s list             # List all saved configs
-  %(prog)s current          # Show current monitor setup
-  %(prog)s delete work      # Delete 'work' config
+  %(prog)s save work                 # Save current config as 'work'
+  %(prog)s load work                 # Load 'work' config (temporary)
+  %(prog)s load work --persistent    # Load 'work' config (persistent)
+  %(prog)s load work --temp          # Load 'work' config (temporary)
+  %(prog)s load work --verify        # Verify 'work' config only
+  %(prog)s load work --method 2      # Load 'work' config (persistent)
+  %(prog)s list                      # List all saved configs
+  %(prog)s current                   # Show current monitor setup
+  %(prog)s delete work               # Delete 'work' config
         """
     )
 
@@ -468,6 +499,28 @@ Examples:
     load_parser.add_argument('--dry-run', action='store_true',
                              help='Show what would be applied '
                                   'without applying')
+    
+    # Method selection - either numeric or alias
+    method_group = load_parser.add_mutually_exclusive_group()
+    method_group.add_argument('--method', type=int,
+                              choices=[ApplyMethod.VERIFY,
+                                       ApplyMethod.TEMPORARY,
+                                       ApplyMethod.PERSISTENT],
+                              default=ApplyMethod.TEMPORARY,
+                              help='Configuration method: 0=verify, '
+                                   '1=temporary (default), 2=persistent')
+    method_group.add_argument('--verify', action='store_const',
+                              const=ApplyMethod.VERIFY,
+                              dest='method',
+                              help='Only verify configuration without '
+                                   'applying')
+    method_group.add_argument('--temporary', '--temp', action='store_const',
+                              const=ApplyMethod.TEMPORARY, dest='method',
+                              help='Apply configuration temporarily')
+    method_group.add_argument('--persistent', action='store_const',
+                              const=ApplyMethod.PERSISTENT,
+                              dest='method',
+                              help='Apply configuration permanently')
 
     # List command
     subparsers.add_parser('list', help='List all saved configurations')
@@ -494,7 +547,13 @@ Examples:
             manager.save_config(args.name)
         elif args.command == 'load':
             dry_run = getattr(args, 'dry_run', False)
-            manager.load_config(args.name, dry_run)
+            method_value = getattr(args, 'method', ApplyMethod.TEMPORARY)
+            # Ensure we have an ApplyMethod enum value
+            if isinstance(method_value, int):
+                method = ApplyMethod(method_value)
+            else:
+                method = method_value
+            manager.load_config(args.name, dry_run, method)
         elif args.command == 'list':
             manager.list_configs()
         elif args.command == 'current':
