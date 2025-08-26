@@ -135,7 +135,7 @@ jobs:
         git push origin v${{ steps.bump.outputs.new_version }}
     
     - name: Create pull request for manual changelog editing
-      uses: peter-evans/create-pull-request@v5
+      uses: peter-evans/create-pull-request@v7
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         commit-message: "Update CHANGELOG for v${{ steps.bump.outputs.new_version }}"
