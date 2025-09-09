@@ -140,7 +140,7 @@ class MonitorConfigManager:
         for m in monitors:
             if m["connector"] == connector:
                 for mm in m["modes"]:
-                    if mm["properties"]["is-current"]:
+                    if mm["properties"].get("is-current", False):
                         return mm["id"]
         return None
 
