@@ -62,24 +62,6 @@ jobs:
     - name: Bump version
       id: bump
       run: |
-        # Create .bumpversion.cfg if it doesn't exist
-        cat > .bumpversion.cfg << EOF
-        [bumpversion]
-        current_version = ${{ steps.current_version.outputs.current }}
-        commit = True
-        tag = True
-        tag_name = v{new_version}
-        message = Bump version to {new_version}
-        
-        [bumpversion:file:pyproject.toml]
-        search = version = "{current_version}"
-        replace = version = "{new_version}"
-        
-        [bumpversion:file:src/displayctl/__init__.py]
-        search = __version__ = "{current_version}"
-        replace = __version__ = "{new_version}"
-        EOF
-
         # Bump the version
         bump2version ${{ github.event.inputs.version_type }} --verbose
         
