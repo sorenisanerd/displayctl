@@ -80,8 +80,6 @@ jobs:
         replace = __version__ = "{new_version}"
         EOF
 
-        git add .bumpversion.cfg
-        
         # Bump the version
         bump2version ${{ github.event.inputs.version_type }} --verbose
         
